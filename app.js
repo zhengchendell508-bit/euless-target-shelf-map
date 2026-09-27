@@ -5,6 +5,7 @@
   let items=[]; try { const v=JSON.parse(localStorage.getItem(KEY)||'[]'); if(Array.isArray(v)) items=v.filter(x=>x&&Number.isInteger(x.shapeIndex)); } catch {}
   let oldPins=[]; try { const v=JSON.parse(localStorage.getItem(OLD_KEY)||'[]'); if(Array.isArray(v)) oldPins=v; } catch {}
   let shapes=[], svg=null, mode='add', zoom=1, editing=null, selectedIndex=null, pending=null, moving=null;
+  let pinch=null, suppressClickUntil=0;
   const clamp=(n,a,b)=>Math.min(b,Math.max(a,n));
   function save(){localStorage.setItem(KEY,JSON.stringify(items));render()}
   function pointAtCenter(path){const b=path.getBBox(),v=svg.viewBox.baseVal;return {x:clamp((b.x+b.width/2-v.x)/v.width,0,1),y:clamp((b.y+b.height/2-v.y)/v.height,0,1)}}
@@ -18,7 +19,7 @@
   function setMode(next){mode=next;for(const [id,value] of [['addMode','add'],['browseMode','browse']]){$(id).classList.toggle('active',value===next);$(id).setAttribute('aria-pressed',String(value===next))}stage.style.cursor=next==='add'?'crosshair':'grab';$('hint').textContent=next==='add'?'点选一段灰色货架，给这段货架编号。':'拖动地图查看；点已编号的货架可以修改。'}
   function openEditor(item=null,index=null,point=null){editing=item;pending=index===null?null:{shapeIndex:index,...point};selectedIndex=index;render();$('dialogTitle').textContent=item?'编辑这段货架':'给这段货架编号';$('shelfName').value=item?.name||'';$('shelfSteps').value=item?.steps||20;$('deleteBtn').hidden=!item;$('moveBtn').hidden=!item;dialog.showModal();$('shelfName').focus()}
   function selectShelf(index,item=items.find(x=>x.shapeIndex===index),point=null){if(!shapes[index])return;if(moving){if(item){$('hint').textContent='这段货架已有编号，请选择另一段。';return}moving.shapeIndex=index;Object.assign(moving,point||pointAtCenter(shapes[index]));moving=null;selectedIndex=index;save();$('hint').textContent='已改选货架。';return}if(mode==='browse'&&!item)return;openEditor(item,index,point||item||pointAtCenter(shapes[index]))}
-  $('svgMount').addEventListener('click',e=>{const path=e.target.closest?.('#Aisle-Shapes > path');if(!path||!svg)return;const index=Number(path.dataset.index);selectShelf(index,items.find(x=>x.shapeIndex===index),pointForEvent(e))});
+  $('svgMount').addEventListener('click',e=>{if(Date.now()<suppressClickUntil)return;const path=e.target.closest?.('#Aisle-Shapes > path');if(!path||!svg)return;const index=Number(path.dataset.index);selectShelf(index,items.find(x=>x.shapeIndex===index),pointForEvent(e))});
   $('editorForm').addEventListener('submit',e=>{e.preventDefault();const name=$('shelfName').value.trim(),steps=Number($('shelfSteps').value);if(!name||!Number.isInteger(steps)||steps<1||steps>500)return;if(editing){editing.name=name;editing.steps=steps}else if(pending){items.push({id:crypto.randomUUID(),name,steps,...pending})}save();dialog.close()});
   $('closeBtn').onclick=()=>dialog.close();$('deleteBtn').onclick=()=>{if(!editing)return;items=items.filter(x=>x.id!==editing.id);selectedIndex=null;save();dialog.close()};
   $('moveBtn').onclick=()=>{moving=editing;dialog.close();setMode('add');$('hint').textContent=`点选 ${moving.name} 要改到的那段货架。`};
@@ -26,6 +27,26 @@
   $('addMode').onclick=()=>setMode('add');$('browseMode').onclick=()=>setMode('browse');
   function setZoom(v){zoom=clamp(v,.65,3);stage.style.width=`${Math.round(1250*zoom)}px`;$('zoomLabel').textContent=`${Math.round(zoom*100)}%`}
   $('zoomIn').onclick=()=>setZoom(zoom*1.25);$('zoomOut').onclick=()=>setZoom(zoom/1.25);
+  const touchMidpoint=touches=>({x:(touches[0].clientX+touches[1].clientX)/2,y:(touches[0].clientY+touches[1].clientY)/2});
+  const touchDistance=touches=>Math.hypot(touches[0].clientX-touches[1].clientX,touches[0].clientY-touches[1].clientY);
+  viewport.addEventListener('touchstart',e=>{
+    if(e.touches.length!==2)return;
+    const center=touchMidpoint(e.touches),rect=viewport.getBoundingClientRect();
+    pinch={distance:touchDistance(e.touches),zoom,contentX:viewport.scrollLeft+center.x-rect.left,contentY:viewport.scrollTop+center.y-rect.top};
+    suppressClickUntil=Date.now()+700;
+  },{passive:true});
+  viewport.addEventListener('touchmove',e=>{
+    if(e.touches.length!==2||!pinch)return;
+    e.preventDefault();
+    const center=touchMidpoint(e.touches),rect=viewport.getBoundingClientRect();
+    setZoom(pinch.zoom*touchDistance(e.touches)/pinch.distance);
+    const ratio=zoom/pinch.zoom;
+    viewport.scrollLeft=pinch.contentX*ratio-(center.x-rect.left);
+    viewport.scrollTop=pinch.contentY*ratio-(center.y-rect.top);
+    suppressClickUntil=Date.now()+700;
+  },{passive:false});
+  viewport.addEventListener('touchend',e=>{if(e.touches.length<2&&pinch){pinch=null;suppressClickUntil=Date.now()+700}},{passive:true});
+  viewport.addEventListener('touchcancel',()=>{pinch=null;suppressClickUntil=Date.now()+700},{passive:true});
   $('exportBtn').onclick=()=>{const blob=new Blob([JSON.stringify({store:'Euless Target',shelves:items,previousPointMarkers:oldPins},null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='Euless_Target_货架编号备份.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
   async function loadMap(){try{const response=await fetch('map.svg');if(!response.ok)throw Error('map');const doc=new DOMParser().parseFromString(await response.text(),'image/svg+xml');svg=doc.documentElement;if(svg.tagName.toLowerCase()==='parsererror')throw Error('svg');svg.removeAttribute('width');svg.removeAttribute('height');$('svgMount').append(svg);shapes=[...svg.querySelectorAll('#Aisle-Shapes > path')];shapes.forEach((p,i)=>{p.dataset.index=i;p.setAttribute('tabindex','0');p.setAttribute('role','button');p.setAttribute('aria-label',`货架 ${i+1}`);p.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();selectShelf(i)}})});render();if(oldPins.length)$('hint').textContent='旧版点标记已保留在备份中。现在请直接点选灰色货架编号。'}catch{$('hint').textContent='地图加载失败，请刷新页面重试。'}}
   if(document.modelContext?.registerTool){const register=tool=>{try{Promise.resolve(document.modelContext.registerTool(tool)).catch(()=>{})}catch{}};
