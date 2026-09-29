@@ -1,7 +1,7 @@
 (() => {
   const KEY='euless-target-shelves-v2', OLD_KEY='euless-target-shelves-v1';
   const $=id=>document.getElementById(id);
-  const stage=$('mapStage'), markers=$('markers'), viewport=$('mapViewport'), dialog=$('editor');
+  const stage=$('mapStage'), viewport=$('mapViewport'), dialog=$('editor');
   let items=[]; try { const v=JSON.parse(localStorage.getItem(KEY)||'[]'); if(Array.isArray(v)) items=v.filter(x=>x&&Number.isInteger(x.shapeIndex)); } catch {}
   let oldPins=[]; try { const v=JSON.parse(localStorage.getItem(OLD_KEY)||'[]'); if(Array.isArray(v)) oldPins=v; } catch {}
   let shapes=[], svg=null, mode='add', zoom=1, editing=null, selectedIndex=null, pending=null, moving=null;
@@ -11,9 +11,7 @@
   function pointAtCenter(path){const b=path.getBBox(),v=svg.viewBox.baseVal;return {x:clamp((b.x+b.width/2-v.x)/v.width,0,1),y:clamp((b.y+b.height/2-v.y)/v.height,0,1)}}
   function pointForEvent(e){const p=svg.createSVGPoint();p.x=e.clientX;p.y=e.clientY;const q=p.matrixTransform(svg.getScreenCTM().inverse()),v=svg.viewBox.baseVal;return {x:clamp((q.x-v.x)/v.width,0,1),y:clamp((q.y-v.y)/v.height,0,1)}}
   function render(){
-    markers.replaceChildren();
     shapes.forEach((p,i)=>{p.classList.toggle('assigned',items.some(x=>x.shapeIndex===i));p.classList.toggle('selected',selectedIndex===i)});
-    items.forEach(item=>{const b=document.createElement('button');b.type='button';b.className='marker';b.textContent=item.name;b.title=`${item.name} · ${item.steps} 步`;b.style.left=`${item.x*100}%`;b.style.top=`${item.y*100}%`;b.addEventListener('click',e=>{e.stopPropagation();selectShelf(item.shapeIndex,item)});markers.append(b)});
     $('count').textContent=`${items.length} 个编号`;$('savedCount').textContent=items.length;
   }
   function setMode(next){mode=next;for(const [id,value] of [['addMode','add'],['browseMode','browse']]){$(id).classList.toggle('active',value===next);$(id).setAttribute('aria-pressed',String(value===next))}stage.style.cursor=next==='add'?'crosshair':'grab';$('hint').textContent=next==='add'?'点选一段灰色货架，给这段货架编号。':'拖动地图查看；点已编号的货架可以修改。'}
