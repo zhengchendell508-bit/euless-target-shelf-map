@@ -14,6 +14,7 @@
   let shapes = [];
   let labelsLayer = null;
   let highlightsLayer = null;
+  let slotGuidesLayer = null;
   let mode = 'browse';
   let zoom = 1;
   let selectedIndex = null;
@@ -35,7 +36,7 @@
             shapeIndex: x.shapeIndex,
             name: x.name || '',
             levels: Number.isInteger(x.levels) ? x.levels : 5,
-            drawers: Number.isInteger(x.drawers) ? x.drawers : (Number.isInteger(x.slots) ? x.slots : (Number.isInteger(x.steps) ? x.steps : 20)),
+            slots: Number.isInteger(x.slots) ? x.slots : (Number.isInteger(x.drawers) ? x.drawers : (Number.isInteger(x.steps) ? x.steps : 20)),
             fontSize: Number(x.fontSize) || 16
           }));
         localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
@@ -108,6 +109,14 @@
       svg.appendChild(labelsLayer);
     }
 
+    slotGuidesLayer = svg.querySelector('#Shelf-Slot-Guides');
+    if (!slotGuidesLayer) {
+      slotGuidesLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      slotGuidesLayer.id = 'Shelf-Slot-Guides';
+      slotGuidesLayer.setAttribute('aria-hidden', 'true');
+      svg.appendChild(slotGuidesLayer);
+    }
+
     highlightsLayer = svg.querySelector('#Product-Highlights');
     if (!highlightsLayer) {
       highlightsLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
@@ -159,6 +168,75 @@
     return text;
   }
 
+
+  // Return the center point of a numbered shelf slot.
+  // slotNumber is 1..item.slots. This is the point a future product highlight uses.
+  function getSlotPoint(shapeIndex, slotNumber) {
+    const item = getItem(shapeIndex);
+    const path = shapes[shapeIndex];
+    if (!item || !path) return null;
+
+    const total = Math.max(1, Number(item.slots) || 1);
+    const slot = clamp(Math.round(Number(slotNumber) || 1), 1, total);
+    const { bbox, vertical, diagonal, angle } = analyzeShelf(path);
+
+    // Position at the center of the chosen equal subdivision.
+    const t = (slot - 0.5) / total;
+
+    if (vertical) {
+      return { x: bbox.x + bbox.width / 2, y: bbox.y + bbox.height * t };
+    }
+
+    if (!diagonal) {
+      return { x: bbox.x + bbox.width * t, y: bbox.y + bbox.height / 2 };
+    }
+
+    // For diagonal shelves, use the dominant diagonal across the bounding box.
+    if (angle > 0) {
+      return { x: bbox.x + bbox.width * t, y: bbox.y + bbox.height * t };
+    }
+    return { x: bbox.x + bbox.width * t, y: bbox.y + bbox.height * (1 - t) };
+  }
+
+  function renderSlotGuides() {
+    if (!slotGuidesLayer) return;
+    slotGuidesLayer.replaceChildren();
+
+    // Division guides are only for map editing; shopping mode stays clean.
+    if (mode !== 'edit') return;
+
+    for (const item of items) {
+      const path = shapes[item.shapeIndex];
+      if (!path) continue;
+
+      const total = Math.max(1, Math.min(200, Number(item.slots) || 1));
+      const { bbox, vertical, diagonal, angle } = analyzeShelf(path);
+
+      // Draw a small center dot for each slot so "第几格" is visually real.
+      // Number labels are shown sparsely to avoid clutter.
+      for (let slot = 1; slot <= total; slot++) {
+        const p = getSlotPoint(item.shapeIndex, slot);
+        if (!p) continue;
+
+        const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        c.setAttribute('cx', p.x);
+        c.setAttribute('cy', p.y);
+        c.setAttribute('r', Math.max(2.2, fontPxToSvgUnits(2.4)));
+        slotGuidesLayer.appendChild(c);
+
+        const showNumber = total <= 20 || slot === 1 || slot === total || slot % 5 === 0;
+        if (showNumber) {
+          const txt = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+          txt.textContent = String(slot);
+          txt.setAttribute('x', p.x);
+          txt.setAttribute('y', p.y - Math.max(8, fontPxToSvgUnits(7)));
+          txt.setAttribute('font-size', Math.max(9, fontPxToSvgUnits(9)));
+          slotGuidesLayer.appendChild(txt);
+        }
+      }
+    }
+  }
+
   function renderLabels() {
     if (!labelsLayer) return;
     labelsLayer.replaceChildren();
@@ -181,6 +259,7 @@
 
     $('count').textContent = `${items.length} 个货架已设置`;
     renderLabels();
+    renderSlotGuides();
   }
 
   function setMode(next) {
@@ -194,8 +273,8 @@
     stage.classList.toggle('editing', isEdit);
 
     $('hint').textContent = isEdit
-      ? '编辑模式：显示全部已设置号码。点任意货架可修改号码、层数、抽屉总数和字体大小。'
-      : '购物查看：所有通道号码隐藏，保持地图干净。以后商品高亮点会在这个模式显示。';
+      ? '编辑模式：显示号码和格位。每条货架会按“货架格数”真正等分；点货架可修改号码、层数、格数和字体大小。'
+      : '购物查看：号码和格位全部隐藏。以后商品属于第几格，高亮点就直接落在那一格的中心。';
 
     render();
   }
@@ -208,7 +287,7 @@
     $('dialogTitle').textContent = item ? '编辑这个货架' : '设置这个货架';
     $('shelfName').value = item?.name || '';
     $('shelfLevels').value = item?.levels || 5;
-    $('shelfDrawers').value = item?.drawers || 20;
+    $('shelfSlots').value = item?.slots || 20;
     $('fontSize').value = item?.fontSize || 16;
     $('fontSizeValue').value = item?.fontSize || 16;
     $('deleteBtn').hidden = !item;
@@ -237,19 +316,19 @@
 
     const name = $('shelfName').value.trim();
     const levels = Number($('shelfLevels').value);
-    const drawers = Number($('shelfDrawers').value);
+    const slots = Number($('shelfSlots').value);
     const fontSize = Number($('fontSize').value);
 
     if (!name ||
         !Number.isInteger(levels) || levels < 1 || levels > 30 ||
-        !Number.isInteger(drawers) || drawers < 1 || drawers > 200 ||
+        !Number.isInteger(slots) || slots < 1 || slots > 200 ||
         !Number.isFinite(fontSize) || fontSize < 8 || fontSize > 40) return;
 
     const existing = getItem(shapeIndex);
     if (existing) {
       existing.name = name;
       existing.levels = levels;
-      existing.drawers = drawers;
+      existing.slots = slots;
       existing.fontSize = fontSize;
     } else {
       items.push({
@@ -257,7 +336,7 @@
         shapeIndex,
         name,
         levels,
-        drawers,
+        slots,
         fontSize
       });
     }
@@ -385,6 +464,41 @@
     } catch {
       $('hint').textContent = '地图加载失败，请确认 index.html、styles.css、app.js、map.svg 四个文件在同一目录。';
     }
+  }
+
+
+  // Future ChatGPT/product-position integration:
+  // a product record only needs shelf shapeIndex + slot number (+ level).
+  if (document.modelContext?.registerTool) {
+    try {
+      document.modelContext.registerTool({
+        name: 'get_shelf_slot_point',
+        title: '取得货架格位坐标',
+        description: '根据货架和第几格，返回该格中心点。用于未来商品高亮定位。',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            shapeIndex: { type: 'integer', minimum: 0 },
+            slotNumber: { type: 'integer', minimum: 1 }
+          },
+          required: ['shapeIndex', 'slotNumber'],
+          additionalProperties: false
+        },
+        annotations: { readOnlyHint: true },
+        execute: input => {
+          const point = getSlotPoint(input.shapeIndex, input.slotNumber);
+          const item = getItem(input.shapeIndex);
+          if (!point || !item) throw Error('找不到这个货架或格位');
+          return {
+            shelf: item.name,
+            slotNumber: clamp(input.slotNumber, 1, item.slots),
+            totalSlots: item.slots,
+            levels: item.levels,
+            point
+          };
+        }
+      });
+    } catch {}
   }
 
   setMode('browse');

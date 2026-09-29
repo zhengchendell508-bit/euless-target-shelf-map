@@ -55,3 +55,8 @@ input{display:block;width:100%;font:inherit;margin-top:7px;border:1px solid #607
   .bottom-row span{max-width:64%}
   .two-col{grid-template-columns:1fr 1fr}
 }
+
+.svg-mount #Shelf-Slot-Guides{pointer-events:none}
+.svg-mount #Shelf-Slot-Guides line{stroke:#f7d66b;stroke-width:1.4;stroke-linecap:round;opacity:.78}
+.svg-mount #Shelf-Slot-Guides circle{fill:#f7d66b;stroke:#16181a;stroke-width:1;opacity:.9}
+.svg-mount #Shelf-Slot-Guides text{fill:#ffeaa2;stroke:#16181a;stroke-width:2;paint-order:stroke;font-weight:700;text-anchor:middle;dominant-baseline:middle}

@@ -40,7 +40,7 @@
     </div>
 
     <div class="bottom-row">
-      <span>编辑模式可设置：货架号码、层数、抽屉总数、字体大小。</span>
+      <span>编辑模式可设置：货架号码、层数、货架格数、字体大小。</span>
       <button id="exportBtn" type="button">下载备份</button>
     </div>
   </main>
@@ -63,8 +63,8 @@
           <input id="shelfLevels" type="number" min="1" max="30" inputmode="numeric" value="5" required>
         </label>
         <label>
-          抽屉总数
-          <input id="shelfDrawers" type="number" min="1" max="200" inputmode="numeric" value="20" required>
+          货架格数
+          <input id="shelfSlots" type="number" min="1" max="200" inputmode="numeric" value="20" required>
         </label>
       </div>
 
@@ -77,8 +77,7 @@
       </label>
 
       <p class="field-note">
-        横货架号码横排；竖货架按“C / 12 / - / 13”这种方式从上往下排，每个字符本身保持正向；
-        斜货架号码也保持正向横排。购物查看模式下所有号码都会隐藏。
+        “货架格数”不是只改一个名字：保存后，这条货架会真正被等分成对应数量的位置格。例如填 20，就得到第 1 格到第 20 格。以后照片/商品记录到某一格时，高亮点就落在这一格的中心位置。横货架号码横排；竖货架按“C / 12 / - / 13”从上往下排。
       </p>
 
       <div class="dialog-actions">
