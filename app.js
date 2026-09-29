@@ -202,38 +202,97 @@
     if (!slotGuidesLayer) return;
     slotGuidesLayer.replaceChildren();
 
-    // Division guides are only for map editing; shopping mode stays clean.
-    if (mode !== 'edit') return;
+    // Only show compartments on the shelf currently being edited/selected.
+    if (mode !== 'edit' || selectedIndex === null) return;
 
-    for (const item of items) {
-      const path = shapes[item.shapeIndex];
-      if (!path) continue;
+    const item = getItem(selectedIndex);
+    const path = shapes[selectedIndex];
+    if (!item || !path) return;
 
-      const total = Math.max(1, Math.min(200, Number(item.slots) || 1));
-      const { bbox, vertical, diagonal, angle } = analyzeShelf(path);
+    const total = Math.max(1, Math.min(200, Number(item.slots) || 1));
+    const { bbox, vertical, diagonal, angle } = analyzeShelf(path);
 
-      // Draw a small center dot for each slot so "第几格" is visually real.
-      // Number labels are shown sparsely to avoid clutter.
-      for (let slot = 1; slot <= total; slot++) {
-        const p = getSlotPoint(item.shapeIndex, slot);
-        if (!p) continue;
+    const NS = 'http://www.w3.org/2000/svg';
+    const numberSize = Math.max(10, fontPxToSvgUnits(9));
 
-        const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-        c.setAttribute('cx', p.x);
-        c.setAttribute('cy', p.y);
-        c.setAttribute('r', Math.max(2.2, fontPxToSvgUnits(2.4)));
-        slotGuidesLayer.appendChild(c);
-
-        const showNumber = total <= 20 || slot === 1 || slot === total || slot % 5 === 0;
-        if (showNumber) {
-          const txt = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-          txt.textContent = String(slot);
-          txt.setAttribute('x', p.x);
-          txt.setAttribute('y', p.y - Math.max(8, fontPxToSvgUnits(7)));
-          txt.setAttribute('font-size', Math.max(9, fontPxToSvgUnits(9)));
-          slotGuidesLayer.appendChild(txt);
-        }
+    // Straight vertical shelf: horizontal divider lines.
+    if (vertical) {
+      for (let i = 1; i < total; i++) {
+        const y = bbox.y + bbox.height * i / total;
+        const line = document.createElementNS(NS, 'line');
+        line.setAttribute('x1', bbox.x);
+        line.setAttribute('x2', bbox.x + bbox.width);
+        line.setAttribute('y1', y);
+        line.setAttribute('y2', y);
+        slotGuidesLayer.appendChild(line);
       }
+
+      for (let slot = 1; slot <= total; slot++) {
+        const y = bbox.y + bbox.height * (slot - 0.5) / total;
+        const txt = document.createElementNS(NS, 'text');
+        txt.textContent = String(slot);
+        txt.setAttribute('x', bbox.x + bbox.width / 2);
+        txt.setAttribute('y', y);
+        txt.setAttribute('font-size', numberSize);
+        slotGuidesLayer.appendChild(txt);
+      }
+      return;
+    }
+
+    // Straight horizontal shelf: vertical divider lines.
+    if (!diagonal) {
+      for (let i = 1; i < total; i++) {
+        const x = bbox.x + bbox.width * i / total;
+        const line = document.createElementNS(NS, 'line');
+        line.setAttribute('x1', x);
+        line.setAttribute('x2', x);
+        line.setAttribute('y1', bbox.y);
+        line.setAttribute('y2', bbox.y + bbox.height);
+        slotGuidesLayer.appendChild(line);
+      }
+
+      for (let slot = 1; slot <= total; slot++) {
+        const x = bbox.x + bbox.width * (slot - 0.5) / total;
+        const txt = document.createElementNS(NS, 'text');
+        txt.textContent = String(slot);
+        txt.setAttribute('x', x);
+        txt.setAttribute('y', bbox.y + bbox.height / 2);
+        txt.setAttribute('font-size', numberSize);
+        slotGuidesLayer.appendChild(txt);
+      }
+      return;
+    }
+
+    // Diagonal shelf: simple perpendicular tick marks across its center line.
+    // Keep numbers upright so the user never has to rotate the phone.
+    const cx = bbox.x + bbox.width / 2;
+    const cy = bbox.y + bbox.height / 2;
+    const radians = angle * Math.PI / 180;
+    const ux = Math.cos(radians), uy = Math.sin(radians);
+    const vx = -uy, vy = ux;
+    const length = Math.hypot(bbox.width, bbox.height);
+    const thickness = Math.max(5, Math.min(bbox.width, bbox.height) / 2);
+
+    for (let i = 1; i < total; i++) {
+      const d = (i / total - 0.5) * length;
+      const px = cx + ux * d;
+      const py = cy + uy * d;
+      const line = document.createElementNS(NS, 'line');
+      line.setAttribute('x1', px - vx * thickness);
+      line.setAttribute('x2', px + vx * thickness);
+      line.setAttribute('y1', py - vy * thickness);
+      line.setAttribute('y2', py + vy * thickness);
+      slotGuidesLayer.appendChild(line);
+    }
+
+    for (let slot = 1; slot <= total; slot++) {
+      const d = ((slot - 0.5) / total - 0.5) * length;
+      const txt = document.createElementNS(NS, 'text');
+      txt.textContent = String(slot);
+      txt.setAttribute('x', cx + ux * d);
+      txt.setAttribute('y', cy + uy * d);
+      txt.setAttribute('font-size', numberSize);
+      slotGuidesLayer.appendChild(txt);
     }
   }
 
@@ -273,7 +332,7 @@
     stage.classList.toggle('editing', isEdit);
 
     $('hint').textContent = isEdit
-      ? '编辑模式：显示号码和格位。每条货架会按“货架格数”真正等分；点货架可修改号码、层数、格数和字体大小。'
+      ? '编辑模式：全部货架号码可见；只有你当前点选的货架显示格位分隔和 1、2、3……编号。'
       : '购物查看：号码和格位全部隐藏。以后商品属于第几格，高亮点就直接落在那一格的中心。';
 
     render();
