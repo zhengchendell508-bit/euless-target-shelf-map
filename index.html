@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#101518">
+  <meta name="description" content="Euless Target 货架地图编辑器">
+  <title>Target 货架地图</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <strong>Target 货架地图</strong>
+      <span class="store">Euless · 货架编辑</span>
+    </div>
+    <span id="count" class="count">0 个货架已设置</span>
+  </header>
+
+  <main>
+    <div class="toolbar" aria-label="地图工具">
+      <div class="segmented" role="group" aria-label="操作模式">
+        <button id="browseMode" class="active" type="button" aria-pressed="true">查看地图</button>
+        <button id="editMode" type="button" aria-pressed="false">✏️ 编辑货架</button>
+      </div>
+
+      <div class="zoom-controls" role="group" aria-label="缩放">
+        <button id="zoomOut" type="button" aria-label="缩小">−</button>
+        <span id="zoomLabel">100%</span>
+        <button id="zoomIn" type="button" aria-label="放大">＋</button>
+      </div>
+    </div>
+
+    <p id="hint" class="hint">查看模式：拖动或双指缩放地图。进入“编辑货架”后点选任意灰色货架。</p>
+
+    <div id="mapViewport" class="map-viewport" tabindex="0" aria-label="Euless Target 货架地图">
+      <div id="mapStage" class="map-stage">
+        <div id="svgMount" class="svg-mount" aria-label="Euless Target 完整货架平面图"></div>
+      </div>
+    </div>
+
+    <div class="bottom-row">
+      <span>每个货架可设置：号码、层数、步数、字体大小。数据保存在当前浏览器。</span>
+      <button id="exportBtn" type="button">下载备份</button>
+    </div>
+  </main>
+
+  <dialog id="editor">
+    <form id="editorForm" method="dialog">
+      <div class="dialog-top">
+        <h2 id="dialogTitle">编辑货架</h2>
+        <button id="closeBtn" type="button" aria-label="关闭">×</button>
+      </div>
+
+      <label>
+        货架号码
+        <input id="shelfName" maxlength="24" autocomplete="off" placeholder="例如 W10-11" required>
+      </label>
+
+      <div class="two-col">
+        <label>
+          货架层数
+          <input id="shelfLevels" type="number" min="1" max="30" inputmode="numeric" value="5" required>
+        </label>
+        <label>
+          货架步数
+          <input id="shelfSteps" type="number" min="1" max="500" inputmode="numeric" value="20" required>
+        </label>
+      </div>
+
+      <label>
+        号码字体大小
+        <div class="font-size-row">
+          <input id="fontSize" type="range" min="8" max="40" step="1" value="16">
+          <output id="fontSizeValue" for="fontSize">16</output><span>px</span>
+        </div>
+      </label>
+
+      <p class="field-note">号码方向会自动跟随货架：横货架横排、竖货架从上往下、斜货架跟随斜度。</p>
+
+      <div class="dialog-actions">
+        <button id="deleteBtn" class="delete" type="button">清除这个货架</button>
+        <button class="save" type="submit">保存</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="app.js"></script>
+</body>
+</html>
