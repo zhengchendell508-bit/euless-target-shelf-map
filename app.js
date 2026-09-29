@@ -35,7 +35,7 @@
             shapeIndex: x.shapeIndex,
             name: x.name || '',
             levels: Number.isInteger(x.levels) ? x.levels : 5,
-            slots: Number.isInteger(x.slots) ? x.slots : (Number.isInteger(x.steps) ? x.steps : 20),
+            drawers: Number.isInteger(x.drawers) ? x.drawers : (Number.isInteger(x.slots) ? x.slots : (Number.isInteger(x.steps) ? x.steps : 20)),
             fontSize: Number(x.fontSize) || 16
           }));
         localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
@@ -194,7 +194,7 @@
     stage.classList.toggle('editing', isEdit);
 
     $('hint').textContent = isEdit
-      ? '编辑模式：显示全部已设置号码。点任意货架可修改号码、层数、格子总数和字体大小。'
+      ? '编辑模式：显示全部已设置号码。点任意货架可修改号码、层数、抽屉总数和字体大小。'
       : '购物查看：所有通道号码隐藏，保持地图干净。以后商品高亮点会在这个模式显示。';
 
     render();
@@ -208,7 +208,7 @@
     $('dialogTitle').textContent = item ? '编辑这个货架' : '设置这个货架';
     $('shelfName').value = item?.name || '';
     $('shelfLevels').value = item?.levels || 5;
-    $('shelfSlots').value = item?.slots || 20;
+    $('shelfDrawers').value = item?.drawers || 20;
     $('fontSize').value = item?.fontSize || 16;
     $('fontSizeValue').value = item?.fontSize || 16;
     $('deleteBtn').hidden = !item;
@@ -237,19 +237,19 @@
 
     const name = $('shelfName').value.trim();
     const levels = Number($('shelfLevels').value);
-    const slots = Number($('shelfSlots').value);
+    const drawers = Number($('shelfDrawers').value);
     const fontSize = Number($('fontSize').value);
 
     if (!name ||
         !Number.isInteger(levels) || levels < 1 || levels > 30 ||
-        !Number.isInteger(slots) || slots < 1 || slots > 200 ||
+        !Number.isInteger(drawers) || drawers < 1 || drawers > 200 ||
         !Number.isFinite(fontSize) || fontSize < 8 || fontSize > 40) return;
 
     const existing = getItem(shapeIndex);
     if (existing) {
       existing.name = name;
       existing.levels = levels;
-      existing.slots = slots;
+      existing.drawers = drawers;
       existing.fontSize = fontSize;
     } else {
       items.push({
@@ -257,7 +257,7 @@
         shapeIndex,
         name,
         levels,
-        slots,
+        drawers,
         fontSize
       });
     }
