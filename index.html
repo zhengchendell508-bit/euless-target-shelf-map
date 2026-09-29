@@ -20,7 +20,7 @@
   <main>
     <div class="toolbar" aria-label="地图工具">
       <div class="segmented" role="group" aria-label="操作模式">
-        <button id="browseMode" class="active" type="button" aria-pressed="true">查看地图</button>
+        <button id="browseMode" class="active" type="button" aria-pressed="true">购物查看</button>
         <button id="editMode" type="button" aria-pressed="false">✏️ 编辑货架</button>
       </div>
 
@@ -31,7 +31,7 @@
       </div>
     </div>
 
-    <p id="hint" class="hint">查看模式：拖动或双指缩放地图。进入“编辑货架”后点选任意灰色货架。</p>
+    <p id="hint" class="hint">购物查看：所有通道号码隐藏，保持地图干净。以后商品高亮点会在这个模式显示。</p>
 
     <div id="mapViewport" class="map-viewport" tabindex="0" aria-label="Euless Target 货架地图">
       <div id="mapStage" class="map-stage">
@@ -40,7 +40,7 @@
     </div>
 
     <div class="bottom-row">
-      <span>每个货架可设置：号码、层数、步数、字体大小。数据保存在当前浏览器。</span>
+      <span>编辑模式可设置：货架号码、层数、格子总数、字体大小。</span>
       <button id="exportBtn" type="button">下载备份</button>
     </div>
   </main>
@@ -54,7 +54,7 @@
 
       <label>
         货架号码
-        <input id="shelfName" maxlength="24" autocomplete="off" placeholder="例如 W10-11" required>
+        <input id="shelfName" maxlength="24" autocomplete="off" placeholder="例如 C12-13" required>
       </label>
 
       <div class="two-col">
@@ -63,8 +63,8 @@
           <input id="shelfLevels" type="number" min="1" max="30" inputmode="numeric" value="5" required>
         </label>
         <label>
-          货架步数
-          <input id="shelfSteps" type="number" min="1" max="500" inputmode="numeric" value="20" required>
+          格子总数
+          <input id="shelfSlots" type="number" min="1" max="200" inputmode="numeric" value="20" required>
         </label>
       </div>
 
@@ -76,7 +76,10 @@
         </div>
       </label>
 
-      <p class="field-note">号码方向会自动跟随货架：横货架横排、竖货架从上往下、斜货架跟随斜度。</p>
+      <p class="field-note">
+        横货架号码横排；竖货架按“C / 12 / - / 13”这种方式从上往下排，每个字符本身保持正向；
+        斜货架号码也保持正向横排。购物查看模式下所有号码都会隐藏。
+      </p>
 
       <div class="dialog-actions">
         <button id="deleteBtn" class="delete" type="button">清除这个货架</button>

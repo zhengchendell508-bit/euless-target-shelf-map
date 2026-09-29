@@ -1,7 +1,8 @@
 (() => {
   'use strict';
 
-  const STORAGE_KEY = 'euless-target-shelves-v3';
+  const STORAGE_KEY = 'euless-target-shelves-v4';
+  const PREVIOUS_KEY = 'euless-target-shelves-v3';
   const BASE_STAGE_WIDTH = 1250;
   const $ = id => document.getElementById(id);
 
@@ -12,6 +13,7 @@
   let svg = null;
   let shapes = [];
   let labelsLayer = null;
+  let highlightsLayer = null;
   let mode = 'browse';
   let zoom = 1;
   let selectedIndex = null;
@@ -21,11 +23,26 @@
 
   function loadItems() {
     try {
-      const value = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
-      return Array.isArray(value) ? value.filter(item => item && Number.isInteger(item.shapeIndex)) : [];
-    } catch {
-      return [];
-    }
+      const current = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
+      if (Array.isArray(current)) return current.filter(x => x && Number.isInteger(x.shapeIndex));
+
+      const old = JSON.parse(localStorage.getItem(PREVIOUS_KEY) || '[]');
+      if (Array.isArray(old)) {
+        const migrated = old
+          .filter(x => x && Number.isInteger(x.shapeIndex))
+          .map(x => ({
+            id: x.id || crypto.randomUUID(),
+            shapeIndex: x.shapeIndex,
+            name: x.name || '',
+            levels: Number.isInteger(x.levels) ? x.levels : 5,
+            slots: Number.isInteger(x.slots) ? x.slots : (Number.isInteger(x.steps) ? x.steps : 20),
+            fontSize: Number(x.fontSize) || 16
+          }));
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
+        return migrated;
+      }
+    } catch {}
+    return [];
   }
 
   function saveItems() {
@@ -33,30 +50,24 @@
     render();
   }
 
-  function clamp(value, min, max) {
-    return Math.min(max, Math.max(min, value));
-  }
+  const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+  const getItem = shapeIndex => items.find(item => item.shapeIndex === shapeIndex) || null;
 
-  function getItem(shapeIndex) {
-    return items.find(item => item.shapeIndex === shapeIndex) || null;
-  }
-
-  function getPathGeometry(path) {
+  function analyzeShelf(path) {
     const bbox = path.getBBox();
     let angle = bbox.width >= bbox.height ? 0 : 90;
 
     try {
       const length = path.getTotalLength();
       const samples = [];
-      const count = 28;
-      for (let i = 0; i < count; i++) {
-        const p = path.getPointAtLength(length * i / (count - 1));
-        samples.push({ x: p.x, y: p.y });
+      for (let i = 0; i < 28; i++) {
+        samples.push(path.getPointAtLength(length * i / 27));
       }
 
-      const cx = samples.reduce((sum, p) => sum + p.x, 0) / samples.length;
-      const cy = samples.reduce((sum, p) => sum + p.y, 0) / samples.length;
+      const cx = samples.reduce((s, p) => s + p.x, 0) / samples.length;
+      const cy = samples.reduce((s, p) => s + p.y, 0) / samples.length;
       let xx = 0, yy = 0, xy = 0;
+
       for (const p of samples) {
         const dx = p.x - cx;
         const dy = p.y - cy;
@@ -68,42 +79,27 @@
       angle = 0.5 * Math.atan2(2 * xy, xx - yy) * 180 / Math.PI;
       while (angle <= -90) angle += 180;
       while (angle > 90) angle -= 180;
+    } catch {}
 
-      if (Math.abs(angle) < 12) angle = 0;
-      if (Math.abs(angle) > 78) angle = 90;
-    } catch {
-      // Keep bbox fallback.
-    }
+    const vertical = Math.abs(angle) >= 65;
+    const diagonal = !vertical && Math.abs(angle) >= 15;
 
-    const offset = 0.65;
-    let x;
-    let y;
-    let anchor = 'start';
-
-    if (angle === 0) {
-      x = bbox.x + bbox.width + offset;
-      y = bbox.y + bbox.height / 2;
-    } else if (angle === 90) {
-      x = bbox.x + bbox.width / 2;
-      y = bbox.y + bbox.height + offset;
-    } else if (angle > 0) {
-      x = bbox.x + bbox.width + offset * 0.7;
-      y = bbox.y + bbox.height + offset * 0.25;
-    } else {
-      x = bbox.x + bbox.width + offset * 0.7;
-      y = bbox.y - offset * 0.25;
-    }
-
-    return { x, y, angle, anchor };
+    return { bbox, angle, vertical, diagonal };
   }
 
   function fontPxToSvgUnits(px) {
-    const viewBoxWidth = svg?.viewBox?.baseVal?.width || 163.73395825254545;
+    const viewBoxWidth = svg?.viewBox?.baseVal?.width || 1600;
     return px * viewBoxWidth / BASE_STAGE_WIDTH;
   }
 
-  function ensureLabelsLayer() {
+  function tokenizeVerticalLabel(name) {
+    const tokens = String(name).match(/[A-Za-z]+|\d+|[-–—/]+|[^A-Za-z0-9\s]+/g);
+    return tokens && tokens.length ? tokens : [String(name)];
+  }
+
+  function ensureOverlayLayers() {
     if (!svg) return;
+
     labelsLayer = svg.querySelector('#Aisle-Labels');
     if (!labelsLayer) {
       labelsLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
@@ -111,25 +107,69 @@
       labelsLayer.setAttribute('aria-hidden', 'true');
       svg.appendChild(labelsLayer);
     }
+
+    highlightsLayer = svg.querySelector('#Product-Highlights');
+    if (!highlightsLayer) {
+      highlightsLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      highlightsLayer.id = 'Product-Highlights';
+      svg.appendChild(highlightsLayer);
+    }
+  }
+
+  function makeLabel(item, path) {
+    const { bbox, vertical, diagonal, angle } = analyzeShelf(path);
+    const fontSize = fontPxToSvgUnits(Number(item.fontSize) || 16);
+    const gap = fontSize * 1.14;
+    const offset = Math.max(fontSize * 0.7, 8);
+
+    const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    text.setAttribute('font-size', fontSize);
+
+    if (vertical) {
+      // Vertical shelf: upright text stacked top-to-bottom, e.g. C / 12 / - / 13.
+      const x = bbox.x + bbox.width / 2;
+      const y = bbox.y + bbox.height + offset;
+      text.setAttribute('x', x);
+      text.setAttribute('y', y);
+      text.setAttribute('text-anchor', 'middle');
+
+      tokenizeVerticalLabel(item.name).forEach((token, index) => {
+        const tspan = document.createElementNS('http://www.w3.org/2000/svg', 'tspan');
+        tspan.textContent = token;
+        tspan.setAttribute('x', x);
+        tspan.setAttribute('dy', index === 0 ? '0' : gap);
+        text.appendChild(tspan);
+      });
+    } else {
+      // Horizontal and diagonal shelves: keep text itself upright and horizontal.
+      let x = bbox.x + bbox.width + offset * 0.55;
+      let y = bbox.y + bbox.height / 2;
+
+      if (diagonal) {
+        x = bbox.x + bbox.width + offset * 0.35;
+        y = angle > 0 ? bbox.y + bbox.height + offset * 0.2 : bbox.y - offset * 0.15;
+      }
+
+      text.textContent = item.name;
+      text.setAttribute('x', x);
+      text.setAttribute('y', y);
+      text.setAttribute('text-anchor', 'start');
+    }
+
+    return text;
   }
 
   function renderLabels() {
-    if (!svg || !labelsLayer) return;
+    if (!labelsLayer) return;
     labelsLayer.replaceChildren();
+
+    // Important: shelf numbers are visible only while editing.
+    if (mode !== 'edit') return;
 
     for (const item of items) {
       const path = shapes[item.shapeIndex];
       if (!path || !item.name) continue;
-
-      const g = getPathGeometry(path);
-      const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      text.textContent = item.name;
-      text.setAttribute('x', g.x);
-      text.setAttribute('y', g.y);
-      text.setAttribute('text-anchor', g.anchor);
-      text.setAttribute('font-size', fontPxToSvgUnits(Number(item.fontSize) || 16));
-      text.setAttribute('transform', `rotate(${g.angle} ${g.x} ${g.y})`);
-      labelsLayer.appendChild(text);
+      labelsLayer.appendChild(makeLabel(item, path));
     }
   }
 
@@ -138,6 +178,7 @@
       path.classList.toggle('assigned', Boolean(getItem(index)));
       path.classList.toggle('selected', selectedIndex === index);
     });
+
     $('count').textContent = `${items.length} 个货架已设置`;
     renderLabels();
   }
@@ -145,14 +186,18 @@
   function setMode(next) {
     mode = next;
     const isEdit = next === 'edit';
+
     $('browseMode').classList.toggle('active', !isEdit);
     $('browseMode').setAttribute('aria-pressed', String(!isEdit));
     $('editMode').classList.toggle('active', isEdit);
     $('editMode').setAttribute('aria-pressed', String(isEdit));
     stage.classList.toggle('editing', isEdit);
+
     $('hint').textContent = isEdit
-      ? '编辑模式：点选任意灰色货架，设置号码、层数、步数和字体大小。'
-      : '查看模式：拖动或双指缩放地图。进入“编辑货架”后点选任意灰色货架。';
+      ? '编辑模式：显示全部已设置号码。点任意货架可修改号码、层数、格子总数和字体大小。'
+      : '购物查看：所有通道号码隐藏，保持地图干净。以后商品高亮点会在这个模式显示。';
+
+    render();
   }
 
   function openEditor(shapeIndex) {
@@ -163,7 +208,7 @@
     $('dialogTitle').textContent = item ? '编辑这个货架' : '设置这个货架';
     $('shelfName').value = item?.name || '';
     $('shelfLevels').value = item?.levels || 5;
-    $('shelfSteps').value = item?.steps || 20;
+    $('shelfSlots').value = item?.slots || 20;
     $('fontSize').value = item?.fontSize || 16;
     $('fontSizeValue').value = item?.fontSize || 16;
     $('deleteBtn').hidden = !item;
@@ -186,23 +231,25 @@
 
   $('editorForm').addEventListener('submit', event => {
     event.preventDefault();
+
     const shapeIndex = Number(dialog.dataset.shapeIndex);
     if (!Number.isInteger(shapeIndex) || !shapes[shapeIndex]) return;
 
     const name = $('shelfName').value.trim();
     const levels = Number($('shelfLevels').value);
-    const steps = Number($('shelfSteps').value);
+    const slots = Number($('shelfSlots').value);
     const fontSize = Number($('fontSize').value);
 
-    if (!name || !Number.isInteger(levels) || levels < 1 || levels > 30 ||
-        !Number.isInteger(steps) || steps < 1 || steps > 500 ||
+    if (!name ||
+        !Number.isInteger(levels) || levels < 1 || levels > 30 ||
+        !Number.isInteger(slots) || slots < 1 || slots > 200 ||
         !Number.isFinite(fontSize) || fontSize < 8 || fontSize > 40) return;
 
     const existing = getItem(shapeIndex);
     if (existing) {
       existing.name = name;
       existing.levels = levels;
-      existing.steps = steps;
+      existing.slots = slots;
       existing.fontSize = fontSize;
     } else {
       items.push({
@@ -210,7 +257,7 @@
         shapeIndex,
         name,
         levels,
-        steps,
+        slots,
         fontSize
       });
     }
@@ -227,6 +274,7 @@
   });
 
   $('closeBtn').addEventListener('click', () => dialog.close());
+
   dialog.addEventListener('close', () => {
     selectedIndex = null;
     render();
@@ -258,21 +306,25 @@
     if (event.touches.length !== 2) return;
     const center = touchMidpoint(event.touches);
     const rect = viewport.getBoundingClientRect();
+
     pinch = {
       distance: touchDistance(event.touches),
       zoom,
       contentX: viewport.scrollLeft + center.x - rect.left,
       contentY: viewport.scrollTop + center.y - rect.top
     };
+
     suppressClickUntil = Date.now() + 700;
   }, { passive: true });
 
   viewport.addEventListener('touchmove', event => {
     if (event.touches.length !== 2 || !pinch) return;
     event.preventDefault();
+
     const center = touchMidpoint(event.touches);
     const rect = viewport.getBoundingClientRect();
     setZoom(pinch.zoom * touchDistance(event.touches) / pinch.distance);
+
     const ratio = zoom / pinch.zoom;
     viewport.scrollLeft = pinch.contentX * ratio - (center.x - rect.left);
     viewport.scrollTop = pinch.contentY * ratio - (center.y - rect.top);
@@ -294,15 +346,18 @@
   $('exportBtn').addEventListener('click', () => {
     const payload = {
       store: 'Euless Target',
-      version: 3,
+      version: 4,
       shelves: items
     };
+
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
+
     a.href = url;
-    a.download = 'Euless_Target_货架设置备份.json';
+    a.download = 'Euless_Target_货架设置备份_v4.json';
     a.click();
+
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   });
 
@@ -310,6 +365,7 @@
     try {
       const response = await fetch('map.svg');
       if (!response.ok) throw new Error('map');
+
       const doc = new DOMParser().parseFromString(await response.text(), 'image/svg+xml');
       svg = doc.documentElement;
       if (svg.tagName.toLowerCase() === 'parsererror') throw new Error('svg');
@@ -324,10 +380,10 @@
         path.setAttribute('tabindex', '-1');
       });
 
-      ensureLabelsLayer();
+      ensureOverlayLayers();
       render();
     } catch {
-      $('hint').textContent = '地图加载失败，请刷新页面重试。';
+      $('hint').textContent = '地图加载失败，请确认 index.html、styles.css、app.js、map.svg 四个文件在同一目录。';
     }
   }
 
