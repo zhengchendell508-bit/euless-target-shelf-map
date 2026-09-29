@@ -202,7 +202,7 @@
     if (!slotGuidesLayer) return;
     slotGuidesLayer.replaceChildren();
 
-    // Only show compartments on the shelf currently being edited/selected.
+    // Only show drawer-like grid on the shelf currently being edited/selected.
     if (mode !== 'edit' || selectedIndex === null) return;
 
     const item = getItem(selectedIndex);
@@ -211,88 +211,75 @@
 
     const total = Math.max(1, Math.min(200, Number(item.slots) || 1));
     const { bbox, vertical, diagonal, angle } = analyzeShelf(path);
-
     const NS = 'http://www.w3.org/2000/svg';
-    const numberSize = Math.max(10, fontPxToSvgUnits(9));
 
-    // Straight vertical shelf: horizontal divider lines.
+    let cx, cy, shelfAngle, length, thickness;
+
     if (vertical) {
-      for (let i = 1; i < total; i++) {
-        const y = bbox.y + bbox.height * i / total;
-        const line = document.createElementNS(NS, 'line');
-        line.setAttribute('x1', bbox.x);
-        line.setAttribute('x2', bbox.x + bbox.width);
-        line.setAttribute('y1', y);
-        line.setAttribute('y2', y);
-        slotGuidesLayer.appendChild(line);
-      }
-
-      for (let slot = 1; slot <= total; slot++) {
-        const y = bbox.y + bbox.height * (slot - 0.5) / total;
-        const txt = document.createElementNS(NS, 'text');
-        txt.textContent = String(slot);
-        txt.setAttribute('x', bbox.x + bbox.width / 2);
-        txt.setAttribute('y', y);
-        txt.setAttribute('font-size', numberSize);
-        slotGuidesLayer.appendChild(txt);
-      }
-      return;
+      cx = bbox.x + bbox.width / 2;
+      cy = bbox.y + bbox.height / 2;
+      shelfAngle = 90;
+      length = bbox.height;
+      thickness = bbox.width;
+    } else if (!diagonal) {
+      cx = bbox.x + bbox.width / 2;
+      cy = bbox.y + bbox.height / 2;
+      shelfAngle = 0;
+      length = bbox.width;
+      thickness = bbox.height;
+    } else {
+      cx = bbox.x + bbox.width / 2;
+      cy = bbox.y + bbox.height / 2;
+      shelfAngle = angle;
+      length = Math.max(12, Math.hypot(bbox.width, bbox.height) * 0.9);
+      thickness = Math.max(6, Math.min(bbox.width, bbox.height) * 0.95);
     }
 
-    // Straight horizontal shelf: vertical divider lines.
-    if (!diagonal) {
-      for (let i = 1; i < total; i++) {
-        const x = bbox.x + bbox.width * i / total;
-        const line = document.createElementNS(NS, 'line');
-        line.setAttribute('x1', x);
-        line.setAttribute('x2', x);
-        line.setAttribute('y1', bbox.y);
-        line.setAttribute('y2', bbox.y + bbox.height);
-        slotGuidesLayer.appendChild(line);
-      }
+    const slotLen = length / total;
 
-      for (let slot = 1; slot <= total; slot++) {
-        const x = bbox.x + bbox.width * (slot - 0.5) / total;
-        const txt = document.createElementNS(NS, 'text');
-        txt.textContent = String(slot);
-        txt.setAttribute('x', x);
-        txt.setAttribute('y', bbox.y + bbox.height / 2);
-        txt.setAttribute('font-size', numberSize);
-        slotGuidesLayer.appendChild(txt);
-      }
-      return;
+    function localToGlobal(x, y) {
+      const r = shelfAngle * Math.PI / 180;
+      const cos = Math.cos(r), sin = Math.sin(r);
+      return {
+        x: cx + x * cos - y * sin,
+        y: cy + x * sin + y * cos
+      };
     }
 
-    // Diagonal shelf: simple perpendicular tick marks across its center line.
-    // Keep numbers upright so the user never has to rotate the phone.
-    const cx = bbox.x + bbox.width / 2;
-    const cy = bbox.y + bbox.height / 2;
-    const radians = angle * Math.PI / 180;
-    const ux = Math.cos(radians), uy = Math.sin(radians);
-    const vx = -uy, vy = ux;
-    const length = Math.hypot(bbox.width, bbox.height);
-    const thickness = Math.max(5, Math.min(bbox.width, bbox.height) / 2);
+    function addSlotBox(index) {
+      const x1 = -length / 2 + index * slotLen;
+      const x2 = x1 + slotLen;
+      const y1 = -thickness / 2;
+      const y2 = thickness / 2;
 
-    for (let i = 1; i < total; i++) {
-      const d = (i / total - 0.5) * length;
-      const px = cx + ux * d;
-      const py = cy + uy * d;
-      const line = document.createElementNS(NS, 'line');
-      line.setAttribute('x1', px - vx * thickness);
-      line.setAttribute('x2', px + vx * thickness);
-      line.setAttribute('y1', py - vy * thickness);
-      line.setAttribute('y2', py + vy * thickness);
-      slotGuidesLayer.appendChild(line);
+      const p1 = localToGlobal(x1, y1);
+      const p2 = localToGlobal(x2, y1);
+      const p3 = localToGlobal(x2, y2);
+      const p4 = localToGlobal(x1, y2);
+
+      const shape = document.createElementNS(NS, 'path');
+      shape.setAttribute('d', `M ${p1.x} ${p1.y} L ${p2.x} ${p2.y} L ${p3.x} ${p3.y} L ${p4.x} ${p4.y} Z`);
+      slotGuidesLayer.appendChild(shape);
+
+      return localToGlobal((x1 + x2) / 2, 0);
     }
 
-    for (let slot = 1; slot <= total; slot++) {
-      const d = ((slot - 0.5) / total - 0.5) * length;
-      const txt = document.createElementNS(NS, 'text');
-      txt.textContent = String(slot);
-      txt.setAttribute('x', cx + ux * d);
-      txt.setAttribute('y', cy + uy * d);
-      txt.setAttribute('font-size', numberSize);
-      slotGuidesLayer.appendChild(txt);
+    for (let i = 0; i < total; i++) {
+      const center = addSlotBox(i);
+      const label = String(i + 1);
+
+      const text = document.createElementNS(NS, 'text');
+      text.textContent = label;
+      text.setAttribute('x', center.x);
+      text.setAttribute('y', center.y);
+
+      // Keep the numbers small enough to stay inside each drawer box.
+      const byHeight = thickness * 0.48;
+      const byWidth = slotLen * (label.length >= 3 ? 0.34 : label.length === 2 ? 0.42 : 0.55);
+      const fontSize = Math.max(4.8, Math.min(byHeight, byWidth));
+      text.setAttribute('font-size', fontSize);
+
+      slotGuidesLayer.appendChild(text);
     }
   }
 
@@ -332,7 +319,7 @@
     stage.classList.toggle('editing', isEdit);
 
     $('hint').textContent = isEdit
-      ? '编辑模式：全部货架号码可见；只有你当前点选的货架显示格位分隔和 1、2、3……编号。'
+      ? '编辑模式：全部货架号码可见；只有你当前点选的货架显示小方格/抽屉，数字会自动缩小放进格子里。'
       : '购物查看：号码和格位全部隐藏。以后商品属于第几格，高亮点就直接落在那一格的中心。';
 
     render();

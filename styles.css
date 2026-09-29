@@ -58,6 +58,8 @@ input{display:block;width:100%;font:inherit;margin-top:7px;border:1px solid #607
 
 
 
+
+
 .svg-mount #Shelf-Slot-Guides{pointer-events:none}
-.svg-mount #Shelf-Slot-Guides line{stroke:#ffe08a;stroke-width:1.6;opacity:.95}
-.svg-mount #Shelf-Slot-Guides text{fill:#fff4bd;stroke:#16181a;stroke-width:2;paint-order:stroke;font-weight:800;text-anchor:middle;dominant-baseline:middle}
+.svg-mount #Shelf-Slot-Guides path{fill:rgba(255,224,138,.06);stroke:#ffe08a;stroke-width:1.35;stroke-linejoin:round}
+.svg-mount #Shelf-Slot-Guides text{fill:#fff4bd;stroke:#16181a;stroke-width:1.9;paint-order:stroke;font-weight:800;text-anchor:middle;dominant-baseline:middle}
